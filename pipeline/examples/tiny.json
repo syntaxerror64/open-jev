@@ -1,0 +1,22 @@
+{
+  "batch_size": 2,
+  "data_path": "data/train/synth.jsonl",
+  "d_ff": 128,
+  "d_model": 64,
+  "eval_every": 5,
+  "grad_clip": 1.0,
+  "lr": 0.001,
+  "max_state_len": 128,
+  "n_heads": 4,
+  "n_question_layers": 1,
+  "n_readout_layers": 2,
+  "n_slots": 4,
+  "n_state_layers": 2,
+  "out_dir": "runs/tiny",
+  "seed": 0,
+  "steps": 5,
+  "teacher_repeats": 10,
+  "vocab_size": 512,
+  "warmup_steps": 0,
+  "weight_decay": 0.01
+}

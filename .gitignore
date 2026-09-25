@@ -233,3 +233,7 @@ benchmarks/out/
 
 # Tokenizer training artifact (reproduce: python -m scripts.train_bpe ...)
 cache/
+
+# Training artifacts (checkpoints, metrics, generated datasets)
+data/train/
+runs/

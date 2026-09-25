@@ -137,6 +137,15 @@ loss.backward()
 For consistency training, pass semantically equivalent states through
 `augmented_states`—for example, paraphrases or shuffled dictionary keys.
 
+The training pipeline wraps this loss in a resumable loop with a teacher
+layer supplying soft targets (never labels from the dataset):
+
+```bash
+python -m pipeline.train --config pipeline/examples/tiny.json --steps 30
+python -m pipeline.train --config pipeline/examples/tiny.json --steps 10 \
+       --resume runs/tiny/checkpoint.pt
+```
+
 ## Development
 
 ```bash
@@ -175,7 +184,7 @@ distribution shift before deploying a model in an unattended workflow.
 ## Todo
 
 - [x] Replace the hash tokenizer with a trained tokenizer
-- [ ] Add a real pretraining and distillation pipeline
+- [x] Add a real pretraining and distillation pipeline
 - [x] Benchmark state-cache reuse and multi-question scaling
 - [x] Evaluate calibration, consistency, and distribution shift
 - [ ] Publish trained checkpoints
