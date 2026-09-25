@@ -21,7 +21,7 @@ tests/conftest.py:12-22 so the default run stays milliseconds-per-step on CPU
 from __future__ import annotations
 
 import json
-from dataclasses import asdict, dataclass, fields
+from dataclasses import asdict, dataclass, field, fields
 from pathlib import Path
 
 __all__ = ["TrainConfig"]
@@ -41,6 +41,32 @@ MODEL_FIELDS: tuple[str, ...] = (
     "n_slots",
     "max_state_len",
 )
+
+#: Sub-keys accepted inside ``TrainConfig.teacher`` (stage 7, Шаг 1).
+#: Anything else in the block is a typo and fails loudly -- same reasoning as
+#: ``load()`` rejecting unknown top-level fields: a dropped key would make the
+#: run silently use different teacher settings than the file claims.
+_TEACHER_KEYS: frozenset[str] = frozenset(
+    {
+        "kind",
+        "model_id",
+        "mode",
+        "max_new_tokens",
+        "temperature",
+        "seed",
+        "repeats",
+        "device",
+        "cache_dir",
+    }
+)
+
+#: Backends ``train.py`` can build from the block; "precomputed" reads row
+#: targets verbatim without calling any teacher.
+_VALID_KINDS: frozenset[str] = frozenset({"stub", "api", "hf_local", "precomputed"})
+
+#: HFLocalTeacher modes: "logits" (one forward -> first-token softmax) and
+#: "sample" (the votes path).
+_VALID_MODES: frozenset[str] = frozenset({"logits", "sample"})
 
 
 @dataclass
@@ -71,6 +97,11 @@ class TrainConfig:
     # --- data / teacher ---
     data_path: str = "data/train/synth.jsonl"
     teacher_repeats: int = 10
+    #: Which teacher feeds the training loop, as a JSON object:
+    #: ``{"kind": "stub"|"api"|"hf_local"|"precomputed", ...}``. Configs
+    #: written before this field existed simply omit it and get the stub, so
+    #: old runs stay byte-for-byte identical (stage 7, Шаг 1).
+    teacher: dict = field(default_factory=lambda: {"kind": "stub"})
 
     # --- TINY model, mirroring tests/conftest.py:12-22 ---
     vocab_size: int = 512
@@ -98,6 +129,35 @@ class TrainConfig:
         if self.teacher_repeats < 1:
             raise ValueError(
                 f"teacher_repeats must be >= 1, got {self.teacher_repeats}"
+            )
+        self._validate_teacher()
+
+    def _validate_teacher(self) -> None:
+        """Check the ``teacher`` block: known sub-keys, known ``kind``/``mode``.
+
+        Runs from ``__post_init__``, i.e. for direct construction *and* for
+        ``load()`` (which ends in ``cls(**data)``), so a typo'd JSON sub-key
+        raises ``ValueError`` here rather than being silently dropped. The
+        top-level unknown-key filter in ``load`` never sees inside the block.
+        """
+        if not isinstance(self.teacher, dict):
+            raise ValueError(
+                f"teacher must be a JSON object, got {type(self.teacher).__name__}"
+            )
+        unknown = sorted(set(self.teacher) - _TEACHER_KEYS)
+        if unknown:
+            raise ValueError(f"unknown teacher config key(s): {unknown}")
+        kind = self.teacher.get("kind", "stub")
+        if kind not in _VALID_KINDS:
+            raise ValueError(
+                f"unknown teacher kind: {kind!r} (expected one of "
+                f"{sorted(_VALID_KINDS)})"
+            )
+        mode = self.teacher.get("mode")
+        if mode is not None and mode not in _VALID_MODES:
+            raise ValueError(
+                f"unknown teacher mode: {mode!r} (expected one of "
+                f"{sorted(_VALID_MODES)})"
             )
 
     def model_kwargs(self) -> dict[str, int]:

@@ -11,6 +11,13 @@ criteria.
 Helpers come from tests/conftest.py where they fit: the session ``cfg``
 (JevConfig), ``model`` (seeded, eval mode), ``state`` and ``questions``
 fixtures replace the illustrative ``tiny_model``/``STATE``/``Q``.
+
+Appended below (stage 07, Шаг 2): the teacher is
+chosen by ``TrainConfig.teacher`` instead of the hardcoded stub -- kwargs and
+``repeats`` flow out of the block with the seed injected, ``kind="precomputed"``
+trains on the rows' own targets (no backend, no uniform substitution, no
+synthetic fallback for a missing data file), and the control test pins the
+default config to the exact old ``make_teacher("stub", seed=cfg.seed)`` call.
 """
 
 from __future__ import annotations
@@ -26,6 +33,7 @@ import torch
 from open_jev.main import Jev
 from pipeline.checkpoint import load_checkpoint, save_checkpoint
 from pipeline.config import TrainConfig
+from pipeline.teacher import StubTeacher
 from pipeline.train import train
 
 REPO = Path(__file__).resolve().parent.parent
@@ -127,3 +135,190 @@ def test_tiny_run_end_to_end() -> None:
     assert metrics["step"] >= 1
     assert metrics["history"], "metrics.json must record the loss history"
     assert metrics["history"][-1]["loss"] < metrics["history"][0]["loss"]
+
+
+# --- stage 7, Шаг 2: the teacher comes from cfg.teacher ---
+
+
+def _k_of(question) -> int:
+    """K for a built question: declared arity, else binary (a noul)."""
+    if hasattr(question, "options"):
+        return len(question.options)
+    if hasattr(question, "labels"):
+        return len(question.labels)
+    return 2
+
+
+def precomputed_rows(targets_row: list[float], n: int = 4) -> list[dict]:
+    """``n`` eval/dataset.py-style rows whose single noul carries the target.
+
+    ``targets_row`` lands in every row verbatim -- that is exactly what the
+    precomputed branch must train on (or reject, when it is one-hot).
+    """
+    questions = [{"type": "noul", "text": "a > 0.5", "key": "a_gt_half"}]
+    rows: list[dict] = []
+    for i in range(n):
+        a = round((i + 1) / (n + 1), 4)
+        rows.append(
+            {
+                "state": {"a": a, "b": round(1 - a, 4)},
+                "questions": [dict(q) for q in questions],
+                "targets": [list(targets_row)],
+            }
+        )
+    return rows
+
+
+def write_rows(path: Path, rows: list[dict]) -> None:
+    """Materialise rows as JSONL (the on-disk shape ``_load_rows`` reads)."""
+    path.write_text(
+        "".join(json.dumps(row) + "\n" for row in rows), encoding="utf-8"
+    )
+
+
+def test_teacher_is_built_from_config_seed_injected(tmp_path, monkeypatch) -> None:
+    """Шаг 2.1: one ``make_teacher`` call, kind from the block, seed from cfg.
+
+    The spy stands in for the backend factory, so a run never loads a real
+    teacher; the recorded call is the whole observable contract.
+    """
+    calls: list[tuple] = []
+
+    def spy(kind, **kwargs):
+        calls.append((kind, kwargs))
+        return StubTeacher(**kwargs)
+
+    monkeypatch.setattr("pipeline.train.make_teacher", spy)
+    cfg = train_cfg(tmp_path, steps=1, seed=7, teacher={"kind": "stub"})
+    train(cfg)
+    assert len(calls) == 1, f"expected exactly one teacher build, got {calls}"
+    kind, kwargs = calls[0]
+    assert kind == "stub" == cfg.teacher["kind"]
+    assert kwargs == {"seed": cfg.seed}  # injected from the config, not hardcoded
+
+
+def test_teacher_kwargs_and_repeats_come_from_block(tmp_path, monkeypatch) -> None:
+    """Шаг 2.2: block kwargs reach the factory; ``kind``/``repeats`` do not.
+
+    ``repeats`` is a loop directive: it must arrive in ``teach(...)`` instead
+    of the backend constructor (``HFLocalTeacher`` has no such kwarg).
+    """
+    calls: list[tuple] = []
+    seen_repeats: list[int] = []
+
+    class SpyTeacher:
+        """Records ``repeats``; answers with uniform (validation-safe) targets."""
+
+        def teach(self, states, questions, repeats=10):
+            seen_repeats.append(repeats)
+            return [
+                torch.full((len(states), _k_of(q)), 1.0 / _k_of(q))
+                for q in questions
+            ]
+
+    def spy(kind, **kwargs):
+        calls.append((kind, kwargs))
+        return SpyTeacher()
+
+    monkeypatch.setattr("pipeline.train.make_teacher", spy)
+    cfg = train_cfg(
+        tmp_path,
+        steps=1,
+        teacher={"kind": "hf_local", "model_id": "m", "mode": "logits", "repeats": 4},
+    )
+    train(cfg)
+    assert calls == [("hf_local", {"model_id": "m", "mode": "logits", "seed": 0})]
+    assert seen_repeats == [4]
+
+
+def test_precomputed_trains_on_row_targets_verbatim(tmp_path, monkeypatch) -> None:
+    """Шаг 2.3: row targets reach the loss as-is -- no teacher, no uniform swap.
+
+    Both ``make_teacher`` and ``_with_uniform_targets`` become raising spies:
+    under ``kind="precomputed"`` neither may run. A fake ``RLCDLoss`` captures
+    the targets so the assertion can see the row's own 0.9 rather than the
+    uniform 0.5 a substitution would have left behind.
+    """
+    data = tmp_path / "distilled.jsonl"
+    write_rows(data, precomputed_rows([0.9, 0.1]))
+
+    def boom(*args, **kwargs):
+        raise AssertionError("precomputed must not build a teacher or swap targets")
+
+    monkeypatch.setattr("pipeline.train.make_teacher", boom)
+    monkeypatch.setattr("pipeline.train._with_uniform_targets", boom)
+
+    captured: list[list[torch.Tensor]] = []
+
+    class FakeLoss:
+        """RLCDLoss stand-in: record the targets, return a differentiable 0."""
+
+        def __init__(self):
+            self.parts = {"nll": 0.0}
+
+        def __call__(self, model, states, questions, targets):
+            captured.append(targets)
+            return (next(iter(model.parameters())) * 0.0).sum()
+
+    monkeypatch.setattr("pipeline.train.RLCDLoss", FakeLoss)
+
+    cfg = train_cfg(
+        tmp_path, steps=1, teacher={"kind": "precomputed"}, data_path=str(data)
+    )
+    train(cfg)
+
+    assert captured, "RLCDLoss must have been called once for the one step"
+    first_row = captured[0][0][0]  # first question, first row of the batch
+    assert first_row.tolist() == pytest.approx([0.9, 0.1])
+    assert float(first_row[0]) == pytest.approx(0.9)  # not the uniform 0.5
+
+
+def test_precomputed_still_rejects_one_hot_rows(tmp_path) -> None:
+    """Шаг 2.4: one-hot rows die in ``build_batch`` -- nothing substitutes them."""
+    data = tmp_path / "one_hot.jsonl"
+    write_rows(data, precomputed_rows([1.0, 0.0]))
+    cfg = train_cfg(
+        tmp_path, steps=1, teacher={"kind": "precomputed"}, data_path=str(data)
+    )
+    with pytest.raises(ValueError, match="soft"):
+        train(cfg)
+
+
+def test_precomputed_missing_data_path_fails_loud(tmp_path) -> None:
+    """Шаг 2.5: a missing file is a ValueError, never synthetic generation.
+
+    ``_load_rows`` silently materialises synthetic rows for a missing
+    ``data_path``; under ``kind="precomputed"`` that fallback would mask the
+    error and train on uniform placeholders instead of the distilled targets.
+    """
+    missing = tmp_path / "no_such_dataset.jsonl"
+    cfg = train_cfg(
+        tmp_path, steps=1, teacher={"kind": "precomputed"}, data_path=str(missing)
+    )
+    with pytest.raises(ValueError, match="not found|missing"):
+        train(cfg)
+    assert not missing.exists(), "no synthetic dataset may be generated in its place"
+
+
+def test_default_config_keeps_stub_call(tmp_path, monkeypatch) -> None:
+    """Шаг 2.6 (control): a config without a ``teacher`` kwarg builds the stub.
+
+    Byte-identical back-compat with the old hardcoded
+    ``make_teacher("stub", seed=cfg.seed)``; only the run's file locations
+    move into ``tmp_path`` so the control writes nothing into the repo.
+    """
+    calls: list[tuple] = []
+
+    def spy(kind, **kwargs):
+        calls.append((kind, kwargs))
+        return StubTeacher(**kwargs)
+
+    monkeypatch.setattr("pipeline.train.make_teacher", spy)
+    cfg = TrainConfig(
+        steps=1,
+        out_dir=str(tmp_path / "out"),
+        data_path=str(tmp_path / "synth.jsonl"),
+    )
+    assert cfg.teacher == {"kind": "stub"}  # default: the block was never passed
+    train(cfg)
+    assert calls == [("stub", {"seed": 0})]

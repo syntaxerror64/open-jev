@@ -13,9 +13,20 @@ Data and teacher, given open questions O1/O2 (no corpus, no API key exists):
 
 * rows come from ``cfg.data_path`` if that file exists, otherwise a synthetic
   set from ``eval/dataset.generate`` seeded by ``cfg.seed`` is materialised
-  there (risk R3; ``data/train/`` is gitignored);
-* targets always come from ``make_teacher("stub", seed=cfg.seed)``. The
-  dataset's own formula targets are *not* used for training -- some are
+  there (risk R3; ``data/train/`` is gitignored) -- except under
+  ``kind="precomputed"``, where a missing file is a loud ``ValueError``
+  before any generation;
+* the teacher is built from ``cfg.teacher`` (stage 7, Шаг 2):
+  ``make_teacher(kind, **block kwargs)`` with ``seed=cfg.seed`` injected when
+  the block does not pin one, and ``repeats=cfg.teacher.get("repeats",
+  cfg.teacher_repeats)`` feeding ``teach(...)``. The default block
+  ``{"kind": "stub"}`` reproduces the old hardcoded
+  ``make_teacher("stub", seed=cfg.seed)`` call byte for byte, so configs
+  written before the field existed train exactly as before;
+* with ``kind="precomputed"`` no teacher is built and no uniform substitution
+  is applied: the rows' own soft targets reach the loss verbatim, guarded by
+  ``build_batch``'s ``validate_soft_targets``. For every other kind the
+  dataset's formula targets are *not* used for training -- some are
   deliberately sharpened to near one-hot, which ``validate_soft_targets``
   (rightly) rejects as hard labels -- so they only serve as the reference for
   the periodic eval, exactly like stage 2's ``eval.cli``.
@@ -134,11 +145,36 @@ def _train(
     torch.manual_seed(cfg.seed)
     random.seed(cfg.seed)
 
+    # Teacher selection (stage 7, Шаг 2): the block names the
+    # backend and carries its kwargs; ``kind`` and ``repeats`` are loop
+    # directives, so they never reach the backend constructor. Work on a copy:
+    # ``cfg.teacher`` must survive untouched into the checkpoint.
+    teacher_cfg = dict(cfg.teacher)
+    kind = teacher_cfg.pop("kind", "stub")
+    repeats = teacher_cfg.pop("repeats", cfg.teacher_repeats)
+
+    if kind == "precomputed":
+        # Verbatim row targets, no backend, NO synthetic fallback: generating
+        # rows here would train on uniform placeholders instead of the
+        # distilled targets and mask the missing dataset (Шаг 2, test 5).
+        precomputed_path = Path(cfg.data_path)
+        if not precomputed_path.exists():
+            raise ValueError(
+                f"{precomputed_path}: dataset file not found -- "
+                f"teacher kind 'precomputed' trains on the row targets in "
+                f"cfg.data_path and never falls back to synthetic generation"
+            )
+
     out_dir = Path(out) if out is not None else Path(cfg.out_dir)
     rows = _load_rows(cfg)
-    # Placeholder rows keep build_batch validating/coercing states+questions;
-    # the real training targets are produced by the teacher right after.
-    train_rows = [_with_uniform_targets(row) for row in rows]
+    if kind == "precomputed":
+        # Rows keep their own targets; build_batch validates them (soft,
+        # non-one-hot) and they flow to RLCDLoss as-is.
+        train_rows = rows
+    else:
+        # Placeholder rows keep build_batch validating/coercing states+questions;
+        # the real training targets are produced by the teacher right after.
+        train_rows = [_with_uniform_targets(row) for row in rows]
     order = _sample_order(len(rows), cfg.seed)
     eval_states, eval_questions, eval_targets = _eval_batch(rows, train_rows, cfg)
 
@@ -173,7 +209,13 @@ def _train(
         )
     model.train()
 
-    teacher = make_teacher("stub", seed=cfg.seed)
+    if kind == "precomputed":
+        # No backend at all: the targets come from ``built.targets`` below.
+        teacher = None
+    else:
+        kwargs = dict(teacher_cfg)
+        kwargs.setdefault("seed", cfg.seed)  # injected unless the block pins it
+        teacher = make_teacher(kind, **kwargs)
     loss_fn = RLCDLoss()
     history = History(step_start=step_start)
     end_step = step_start + cfg.steps
@@ -186,9 +228,13 @@ def _train(
 
         batch = _batch_of(train_rows, order, step, cfg.batch_size)
         built = build_batch(batch)
-        targets = validate_soft_targets(
-            teacher.teach(built.states, built.questions, repeats=cfg.teacher_repeats)
-        )
+        if teacher is None:
+            # precomputed: build_batch already ran validate_soft_targets.
+            targets = built.targets
+        else:
+            targets = validate_soft_targets(
+                teacher.teach(built.states, built.questions, repeats=repeats)
+            )
         loss = loss_fn(model, built.states, built.questions, targets)
 
         optimizer.zero_grad(set_to_none=True)
@@ -255,6 +301,10 @@ def _load_rows(cfg: TrainConfig) -> list[dict]:
     ``eval/dataset.generate(n, seed=cfg.seed)`` and written to ``data_path``
     (reproducible artifact; ``data/train/`` is gitignored). An existing file
     is trusted as-is -- delete it to regenerate under a different seed.
+    The fallback is for teacher-driven runs only: ``_train`` refuses to call
+    this with ``kind="precomputed"`` when the file is missing, because
+    substituting synthetic rows there would hide the absence of the very
+    targets the run is supposed to train on.
     """
     path = Path(cfg.data_path)
     if path.exists():
