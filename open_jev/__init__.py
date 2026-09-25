@@ -23,6 +23,7 @@ from open_jev.main import (
     StateEncoder,
     StateValue,
     TextEncoder,
+    Usage,
     flatten_state,
     stable_hash,
 )
@@ -54,6 +55,7 @@ __all__ = [
     "StateValue",
     "TextEncoder",
     "Tokenizer",
+    "Usage",
     "flatten_state",
     "stable_hash",
 ]

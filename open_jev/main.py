@@ -238,6 +238,23 @@ class ScoreAnswer:
 Answer = NoulAnswer | ChoiceAnswer | ScoreAnswer
 
 
+# Their envelope carries `usage: {input_tokens, output_tokens}` on every
+# request; this is ours. Frozen and strictly int-typed (stage 12 R3), because
+# a wire type whose fields can drift to floats is a wire type nobody can trust.
+@dataclass(frozen=True)
+class Usage:
+    """Token accounting for one state's share of a request.
+
+    `input_tokens` is the flattened state plus every part of every question
+    (text, Choice options, Score labels) -- exactly what the model really
+    tokenizes. `output_tokens` is always 0: no text generation, structured
+    answers only.
+    """
+
+    input_tokens: int
+    output_tokens: int
+
+
 # A real deployment uses a proper BPE tokenizer. This hash tokenizer exists so
 # the file runs standalone. What matters here is `flatten_state`: it turns a
 # nested JSON object into (token, path) pairs, which is how the model gets
@@ -871,6 +888,50 @@ class Jev(nn.Module):
             conf, _ = self.confidence_head(vec, probs.shape[-1])
             out.append((probs.clamp(min=1e-8), conf))
         return out
+
+    def usage(
+        self, states: Sequence[StateValue], questions: Sequence[Question]
+    ) -> list[Usage]:
+        """Count input tokens per state: one `Usage` per state, like `forward`.
+
+        Each entry is the tokens of that state (same `flatten_state` path
+        `encode_state` runs) plus the shared cost of the questions: every
+        question's text, every `Choice` option, every `Score` label -- the
+        exact strings `_readout`/`_encode_options` feed through the
+        tokenizer. `encode_batch` merely right-pads its rows, so one string's
+        real cost is `len(tokenizer.encode(s, max_question_len))`; PAD is a
+        batching artifact and never counted.
+
+        `output_tokens` is always 0: no text generation, structured answers
+        only -- System One has no decoder, so the output side of the envelope
+        costs nothing.
+
+        Pure accounting: the model, the states, and the questions are never
+        touched, and repeated calls return identical results.
+        """
+        max_q_len = self.cfg.max_question_len
+        question_tokens = 0
+        for q in questions:
+            question_tokens += len(self.tokenizer.encode(q.text, max_q_len))
+            if isinstance(q, Choice):
+                question_tokens += sum(
+                    len(self.tokenizer.encode(opt, max_q_len)) for opt in q.options
+                )
+            elif isinstance(q, Score):
+                question_tokens += sum(
+                    len(self.tokenizer.encode(lbl, max_q_len)) for lbl in q.labels
+                )
+
+        return [
+            Usage(
+                input_tokens=len(
+                    flatten_state(s, self.tokenizer, self.cfg.max_state_len)[0]
+                )
+                + question_tokens,
+                output_tokens=0,
+            )
+            for s in states
+        ]
 
 
 # The single most important rule: NEVER train on hard labels.
