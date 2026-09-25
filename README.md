@@ -135,6 +135,28 @@ loss.backward()
 For consistency training, pass semantically equivalent states through
 `augmented_states`—for example, paraphrases or shuffled dictionary keys.
 
+## Development
+
+```bash
+python -m venv .venv
+.venv/bin/pip install "torch>=2.0" --index-url https://download.pytorch.org/whl/cpu
+.venv/bin/pip install -r requirements-dev.txt
+.venv/bin/python -m pytest
+```
+
+The suite lives in `tests/` and checks structural guarantees only (typed
+answers, normalized distributions, question isolation, cache reuse) because the
+weights are random.
+
+Pushes are gated on that suite: enable the bundled hook once per clone and
+`git push` refuses to upload anything unless the tests pass.
+
+```bash
+git config core.hooksPath .githooks
+```
+
+For an emergency push use `git push --no-verify`.
+
 ## Notes
 
 This repository explores an architecture inferred from public material. Details

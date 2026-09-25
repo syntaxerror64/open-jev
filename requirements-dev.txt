@@ -1,0 +1,6 @@
+# Development / test dependencies.
+# Runtime dependency (torch>=2.0) is documented in README.md.
+#
+# CPU-only torch (recommended for CI and dev machines):
+#   pip install torch --index-url https://download.pytorch.org/whl/cpu
+pytest>=7.0

@@ -1,0 +1,33 @@
+#!/bin/sh
+# Push gate: nothing reaches the remote unless the test suite passes.
+#
+# Enable once per clone with:
+#   git config core.hooksPath .githooks
+#
+# Bypass for an emergency push with the standard git escape hatch:
+#   git push --no-verify
+
+set -e
+
+repo_root=$(git rev-parse --show-toplevel)
+cd "$repo_root"
+
+if [ -x .venv/bin/python ]; then
+    PY=.venv/bin/python
+else
+    PY=python3
+fi
+
+if ! "$PY" -c "import pytest" 2>/dev/null; then
+    echo "pre-push: pytest is unavailable for $PY" >&2
+    echo "pre-push: install dev deps (pip install -r requirements-dev.txt), or bypass with --no-verify" >&2
+    exit 1
+fi
+
+echo "pre-push: running test suite before push..."
+if ! "$PY" -m pytest; then
+    echo "pre-push: tests FAILED - push aborted." >&2
+    exit 1
+fi
+
+echo "pre-push: tests passed, pushing."
