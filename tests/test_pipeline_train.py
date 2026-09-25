@@ -322,3 +322,27 @@ def test_default_config_keeps_stub_call(tmp_path, monkeypatch) -> None:
     assert cfg.teacher == {"kind": "stub"}  # default: the block was never passed
     train(cfg)
     assert calls == [("stub", {"seed": 0})]
+
+
+# --- stage 8, Шаги 4-5: real example + precomputed fixture run
+
+
+def test_train_on_precomputed_targets_falls(tmp_path):
+    # spec amendment (found by agent 08-C): at steps=5 the final-vs-first batch
+    # comparison is deterministic red (seed 0 noise: 1.038 > 1.024); steps=10
+    # keeps the assertion verbatim and green, still << a second.
+    cfg = TrainConfig(steps=10, batch_size=2, eval_every=5, seed=0, lr=1e-3,
+                      out_dir=str(tmp_path), data_path="tests/fixtures/precomputed.jsonl",
+                      teacher={"kind": "precomputed"})      # поле этапа 7 (dict)
+    history = train(cfg)
+    assert history[-1].loss < history[0].loss                  # < секунд
+    assert (tmp_path / "checkpoint.pt").is_file() and (tmp_path / "metrics.json").is_file()
+
+
+def test_real_example_config_validates():
+    from pipeline.config import MODEL_FIELDS  # local: module imports are stage-07 frozen
+    cfg = TrainConfig.load("pipeline/examples/real.json")   # незнакомый ключ = ValueError
+    assert set(cfg.model_kwargs()) == set(MODEL_FIELDS)     # модель собирается
+    assert (cfg.data_path, cfg.out_dir) == ("data/real/train.targets.jsonl", "runs/real")
+    assert cfg.teacher["kind"] == "precomputed"
+    assert (cfg.steps, cfg.batch_size, cfg.eval_every, cfg.seed) == (200, 4, 50, 0)

@@ -1,0 +1,25 @@
+{
+  "batch_size": 4,
+  "data_path": "data/real/train.targets.jsonl",
+  "d_ff": 256,
+  "d_model": 128,
+  "eval_every": 50,
+  "grad_clip": 1.0,
+  "lr": 0.001,
+  "max_state_len": 128,
+  "n_heads": 4,
+  "n_question_layers": 1,
+  "n_readout_layers": 2,
+  "n_slots": 4,
+  "n_state_layers": 2,
+  "out_dir": "runs/real",
+  "seed": 0,
+  "steps": 200,
+  "teacher": {
+    "kind": "precomputed"
+  },
+  "teacher_repeats": 10,
+  "vocab_size": 512,
+  "warmup_steps": 0,
+  "weight_decay": 0.01
+}
