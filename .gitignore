@@ -13,6 +13,8 @@ __pycache__/
 .vscode
 docs/
 docs
+# Local-only directories: stay on this machine, never pushed
+plan/
 build/
 develop-eggs/
 dist/
