@@ -166,6 +166,9 @@ class Score:
     `labels` are ordered low -> high, e.g. ("calm", "frustrated", "very frustrated").
     Ordinality matters: confusing level 0 with level 3 is a worse error than
     confusing 0 with 1, and a flat softmax cannot express that.
+
+    2..10 levels — the public API contract (docs.typesafe.ai); model capacity
+    `max_score_levels` stays 16 so old checkpoints keep loading.
     """
 
     text: str
@@ -175,6 +178,10 @@ class Score:
     def __post_init__(self) -> None:
         if len(self.labels) < 2:
             raise ValueError(f"Score needs >= 2 levels, got {len(self.labels)}")
+        if len(self.labels) > 10:
+            raise ValueError(
+                f"Score accepts up to 10 levels (public API contract), got {len(self.labels)}"
+            )
 
 
 Question = Noul | Choice | Score
