@@ -146,7 +146,8 @@ python -m venv .venv
 
 The suite lives in `tests/` and checks structural guarantees only (typed
 answers, normalized distributions, question isolation, cache reuse) because the
-weights are random.
+weights are random. Tests marked `slow` (the `example.py` demo) are skipped by
+the push gate below; run them with a plain `pytest`.
 
 Pushes are gated on that suite: enable the bundled hook once per clone and
 `git push` refuses to upload anything unless the tests pass.

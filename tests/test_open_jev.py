@@ -253,7 +253,16 @@ def test_rlcd_loss_is_finite_and_differentiable(model, state, questions) -> None
 # --- shipped demos ---------------------------------------------------------
 
 
-@pytest.mark.parametrize("script", ["forward.py", "example.py"])
+@pytest.mark.parametrize(
+    "script",
+    [
+        "forward.py",
+        # example.py builds a larger model and runs a training step, which
+        # costs ~30s -- too slow for a push gate. Marked slow, so a plain
+        # `pytest` still runs it while the hook skips it.
+        pytest.param("example.py", marks=pytest.mark.slow),
+    ],
+)
 def test_shipped_demo_scripts_run(script: str) -> None:
     proc = subprocess.run(
         [sys.executable, script],
