@@ -184,6 +184,11 @@ Question = Noul | Choice | Score
 class NoulAnswer:
     key: str
     noul: float  # P(statement is true), in [0, 1]
+    type: str = "noul"
+
+    def to_dict(self) -> dict:
+        """Their wire form: no `key` (it lives as the answers-map key)."""
+        return {"type": self.type, "noul": self.noul}
 
 
 @dataclass(frozen=True)
@@ -192,6 +197,16 @@ class ChoiceAnswer:
     choice: str  # argmax option; guaranteed to be one of the declared options
     probabilities: dict[str, float]
     confidence: float  # epistemic certainty, NOT max(probabilities)
+    type: str = "choice"
+
+    def to_dict(self) -> dict:
+        """Their wire form: no `key` (it lives as the answers-map key)."""
+        return {
+            "type": self.type,
+            "choice": self.choice,
+            "probabilities": dict(self.probabilities),
+            "confidence": self.confidence,
+        }
 
 
 @dataclass(frozen=True)
@@ -200,6 +215,24 @@ class ScoreAnswer:
     score: float  # expected value over levels, e.g. 1.4
     probabilities: dict[str, float]
     confidence: float
+    legend: dict[int, str] = field(default_factory=dict)
+    type: str = "score"
+
+    def to_dict(self) -> dict:
+        """Their wire form: no `key`; probabilities/legend keyed by "0".."L-1".
+
+        Level numbering IS label order, so the positional index over the
+        probabilities (insertion-ordered at construction) is the wire number.
+        """
+        return {
+            "type": self.type,
+            "score": self.score,
+            "probabilities": {
+                str(i): p for i, p in enumerate(self.probabilities.values())
+            },
+            "legend": {str(level): label for level, label in self.legend.items()},
+            "confidence": self.confidence,
+        }
 
 
 Answer = NoulAnswer | ChoiceAnswer | ScoreAnswer
@@ -796,6 +829,9 @@ class Jev(nn.Module):
                             score=expected[b].item(),
                             probabilities={
                                 lbl: row[i].item() for i, lbl in enumerate(q.labels)
+                            },
+                            legend={
+                                i: lbl for i, lbl in enumerate(q.labels)
                             },
                             confidence=conf[b].item(),
                         )
