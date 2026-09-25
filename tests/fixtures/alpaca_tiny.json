@@ -1,0 +1,62 @@
+[
+  {
+    "instruction": "Give three tips for staying healthy.",
+    "input": "",
+    "output": "1. Eat a varied diet rich in vegetables, fruit and whole grains. 2. Move your body for at least 30 minutes on most days. 3. Sleep seven to nine hours per night to let the body recover."
+  },
+  {
+    "instruction": "Identify the odd one out in the following list.",
+    "input": "banana, apple, grape, peach, carrot",
+    "output": "Carrot is the odd one out: it is a vegetable, while banana, apple, grape and peach are fruits."
+  },
+  {
+    "instruction": "Rewrite the sentence in a more formal tone.",
+    "input": "Hey, can you send me that report when you get a sec?",
+    "output": "Could you please forward the aforementioned report at your earliest convenience?"
+  },
+  {
+    "instruction": "Translate the given sentence into French.",
+    "input": "The weather is beautiful today.",
+    "output": "Le temps est magnifique aujourd'hui."
+  },
+  {
+    "instruction": "Extract every person's name mentioned in the text.",
+    "input": "Alice met Bob at Carol's cafe before dropping the package off at Dan's office.",
+    "output": "Alice, Bob, Carol, Dan"
+  },
+  {
+    "instruction": "Explain the difference between a list and a tuple in Python.",
+    "input": "The reader already knows what a variable is.",
+    "output": "A list is mutable and written with square brackets, so its elements can be changed in place. A tuple is immutable and written with parentheses: once created, its elements cannot be modified, which makes tuples slightly faster and safe to use as dictionary keys."
+  },
+  {
+    "instruction": "Write a one-sentence product description for the given item.",
+    "input": "Stainless steel insulated water bottle, 750 ml, keeps drinks cold for 24 hours",
+    "output": "This 750 ml stainless steel bottle locks in ice-cold refreshment for a full 24 hours, fitting any backpack pocket while surviving drops on the trail."
+  },
+  {
+    "instruction": "Classify the sentiment of the following review as positive, negative or mixed.",
+    "input": "The battery life is amazing, but the keyboard feels cheap.",
+    "output": "Mixed: the review praises the battery life but criticises the keyboard."
+  },
+  {
+    "instruction": "Compute the total price of the order including tax.",
+    "input": "2 notebooks at 3.50 each, 1 pen at 1.25, tax rate 8%",
+    "output": "Subtotal: 2 * 3.50 + 1.25 = 8.25. With 8% tax (0.66) the total is 8.91."
+  },
+  {
+    "instruction": "Write a detailed, step-by-step guide for a first-time home barista who wants to dial in espresso on a 58 mm manual lever machine. The guide must explain how to choose a grind size, how to distribute and level the coffee bed, how much coffee to dose into the basket, what pre-infusion is and how long to hold it, how to read the flow of the first drops in order to decide whether to grind finer or coarser, and how to adjust only one variable at a time while recording the result of every shot. Also mention the common mistakes beginners make, such as tamping too hard, using stale beans, and pulling shots with an uneven tamp, and finish with a short checklist the reader can tape next to the machine.",
+    "input": "The reader owns a 58 mm manual lever machine, a burr grinder and freshly roasted beans.",
+    "output": "Start with 18 g of coffee, grind medium-fine, distribute evenly, tamp level with light pressure, pre-infuse for 5 seconds, then pull for 25-30 seconds and adjust one variable at a time between shots."
+  },
+  {
+    "instruction": "List all prime numbers in the given range.",
+    "input": "1 to 20",
+    "output": "2, 3, 5, 7, 11, 13, 17, 19"
+  },
+  {
+    "instruction": "Suggest a title for the blog post draft below.",
+    "input": "A post about how remote teams can run shorter and more focused standup meetings.",
+    "output": "Beyond the Daily Huddle: How Remote Teams Run Shorter, Focused Standups"
+  }
+]
