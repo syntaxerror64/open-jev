@@ -106,10 +106,11 @@ The model is untrained, so the values from this example are random. The useful
 guarantee is structural: a `Choice` answer can only be one of the options that
 were declared.
 
-To run the complete demo, including one calibration-oriented training step:
+To run the complete demo, including one calibration-oriented training step
+(`forward.py` is the minimal example — inference without a training step):
 
 ```bash
-python open_jev/main.py
+python example.py
 ```
 
 ## Training
@@ -163,8 +164,8 @@ For an emergency push use `git push --no-verify`.
 This repository explores an architecture inferred from public material. Details
 such as the encoder design, query slots, ordinal head, confidence objective, and
 training recipe are hypotheses, not disclosed details of TypeSafe AI's system.
-See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the full reasoning and
-tradeoffs behind the reconstruction.
+See `docs/ARCHITECTURE.md` for the full reasoning and tradeoffs behind the
+reconstruction.
 
 In particular, typed output prevents schema violations; it does not guarantee
 that a prediction is correct. Calibration must also be measured again under

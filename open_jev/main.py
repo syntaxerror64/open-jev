@@ -58,7 +58,7 @@ automation viable. High-entropy-but-confident means "it really is 60/40, hedge".
 Low confidence means "escalate to a human or a reasoning model".
 
 Usage:
-    python jev.py        # builds a tiny model, runs a mixed query, trains a step
+    python example.py        # builds a tiny model, runs a mixed query, trains a step
 
 Requires: torch >= 2.0
 """
