@@ -175,7 +175,7 @@ distribution shift before deploying a model in an unattended workflow.
 
 - [ ] Replace the hash tokenizer with a trained tokenizer
 - [ ] Add a real pretraining and distillation pipeline
-- [ ] Benchmark state-cache reuse and multi-question scaling
+- [x] Benchmark state-cache reuse and multi-question scaling
 - [x] Evaluate calibration, consistency, and distribution shift
 - [ ] Publish trained checkpoints
 

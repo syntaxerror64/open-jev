@@ -227,3 +227,6 @@ __marimo__/
 # Eval harness artifacts: synthetic dataset and generated reports
 data/eval/
 eval/out/
+
+# Benchmark harness artifacts (the committed baseline is benchmarks/RESULTS.md)
+benchmarks/out/
