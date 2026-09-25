@@ -43,9 +43,10 @@ single parallel forward pass with outputs constrained by their declared types.
 - An evidential head models epistemic confidence separately from class probability
 - `RLCDLoss` combines soft-target NLL, Brier score, consistency, confidence, and ECE terms
 
-The implementation is intentionally small and legible. The included tokenizer
-is a deterministic hash tokenizer, suitable for running the architecture but
-not for training a useful model.
+The implementation is intentionally small and legible. The default tokenizer
+is a deterministic hash tokenizer; a trained BPE tokenizer (built with
+`python -m scripts.train_bpe` from the repository's own text) implements the
+same interface and can be passed to `Jev` as an opt-in.
 
 ## Install
 
@@ -173,7 +174,7 @@ distribution shift before deploying a model in an unattended workflow.
 
 ## Todo
 
-- [ ] Replace the hash tokenizer with a trained tokenizer
+- [x] Replace the hash tokenizer with a trained tokenizer
 - [ ] Add a real pretraining and distillation pipeline
 - [x] Benchmark state-cache reuse and multi-question scaling
 - [x] Evaluate calibration, consistency, and distribution shift

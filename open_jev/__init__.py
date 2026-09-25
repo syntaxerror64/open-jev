@@ -1,3 +1,4 @@
+from open_jev.bpe_tokenizer import BPETokenizer
 from open_jev.main import (
     Answer,
     BidirectionalBlock,
@@ -25,9 +26,11 @@ from open_jev.main import (
     flatten_state,
     stable_hash,
 )
+from open_jev.tokenizers import Tokenizer
 
 __all__ = [
     "Answer",
+    "BPETokenizer",
     "BidirectionalBlock",
     "Choice",
     "ChoiceAnswer",
@@ -50,6 +53,7 @@ __all__ = [
     "StateEncoder",
     "StateValue",
     "TextEncoder",
+    "Tokenizer",
     "flatten_state",
     "stable_hash",
 ]

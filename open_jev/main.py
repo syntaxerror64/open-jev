@@ -75,6 +75,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch import Tensor
 
+from open_jev.tokenizers import Tokenizer
+
 
 @dataclass(frozen=True)
 class JevConfig:
@@ -86,6 +88,10 @@ class JevConfig:
     budget goes.
     """
 
+    # `vocab_size` sizes the *default* HashTokenizer and is the number other
+    # components report (benchmarks/cli.py metadata). The two token embedding
+    # tables follow the tokenizer actually passed to `Jev`, which may differ --
+    # see `Jev.__init__`.
     vocab_size: int = 32_000
     d_model: int = 256
     n_heads: int = 8
@@ -241,7 +247,7 @@ StateValue = str | int | float | bool | None | dict | list
 
 def flatten_state(
     state: StateValue,
-    tokenizer: HashTokenizer,
+    tokenizer: Tokenizer,
     max_len: int,
     prefix: str = "",
     depth: int = 0,
@@ -386,10 +392,17 @@ class StateEncoder(nn.Module):
     you cache the KV and every subsequent query is microseconds.
     """
 
-    def __init__(self, cfg: JevConfig) -> None:
+    def __init__(self, cfg: JevConfig, vocab_size: int | None = None) -> None:
         super().__init__()
         self.cfg = cfg
-        self.token = nn.Embedding(cfg.vocab_size, cfg.d_model, padding_idx=0)
+        # `vocab_size` is the size of the tokenizer actually in use; it defaults
+        # to cfg.vocab_size so `StateEncoder(cfg)` keeps behaving as before.
+        # padding_idx=0 keeps 0 reserved for PAD whatever the size is.
+        self.token = nn.Embedding(
+            cfg.vocab_size if vocab_size is None else vocab_size,
+            cfg.d_model,
+            padding_idx=0,
+        )
 
         # Structural positions instead of (or alongside) flat ones.
         self.depth_emb = nn.Embedding(cfg.max_path_depth, cfg.d_model)
@@ -435,9 +448,15 @@ class TextEncoder(nn.Module):
     just a dot product.
     """
 
-    def __init__(self, cfg: JevConfig) -> None:
+    def __init__(self, cfg: JevConfig, vocab_size: int | None = None) -> None:
         super().__init__()
-        self.token = nn.Embedding(cfg.vocab_size, cfg.d_model, padding_idx=0)
+        # Same rule as StateEncoder: the table follows the tokenizer in use,
+        # so questions and options never exceed it. See Jev.__init__.
+        self.token = nn.Embedding(
+            cfg.vocab_size if vocab_size is None else vocab_size,
+            cfg.d_model,
+            padding_idx=0,
+        )
         self.pos = nn.Embedding(cfg.max_question_len, cfg.d_model)
         self.layers = nn.ModuleList(
             BidirectionalBlock(cfg) for _ in range(cfg.n_question_layers)
@@ -609,13 +628,27 @@ class Jev(nn.Module):
         4. Dispatch each slot bundle to its typed head.
     """
 
-    def __init__(self, cfg: JevConfig, tokenizer: HashTokenizer | None = None) -> None:
+    def __init__(self, cfg: JevConfig, tokenizer: Tokenizer | None = None) -> None:
+        """Build the model.
+
+        `tokenizer` may be any object satisfying `open_jev.tokenizers.Tokenizer`
+        (`HashTokenizer` is only the default). Both token embedding tables are
+        sized to `tokenizer.vocab_size`, *not* to `cfg.vocab_size`, so a trained
+        BPE with more (or fewer) merges than the config never overflows
+        `nn.Embedding`. With the default `HashTokenizer(cfg.vocab_size)` the two
+        numbers coincide and nothing changes.
+
+        `cfg.vocab_size` still has its own jobs and is left untouched: it sizes
+        the default `HashTokenizer` and it is what `benchmarks/cli.py` records
+        as model metadata. padding_idx=0 (PAD) is preserved on both tables.
+        """
         super().__init__()
         self.cfg = cfg
         self.tokenizer = tokenizer or HashTokenizer(cfg.vocab_size)
 
-        self.state_encoder = StateEncoder(cfg)
-        self.text_encoder = TextEncoder(cfg)
+        emb_vocab = self.tokenizer.vocab_size
+        self.state_encoder = StateEncoder(cfg, vocab_size=emb_vocab)
+        self.text_encoder = TextEncoder(cfg, vocab_size=emb_vocab)
 
         # Learned slot initialization, conditioned on the question embedding.
         self.slot_init = nn.Parameter(torch.randn(cfg.n_slots, cfg.d_model) * 0.02)

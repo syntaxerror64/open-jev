@@ -11,6 +11,7 @@ from __future__ import annotations
 import subprocess
 import sys
 import zlib
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -20,6 +21,7 @@ from open_jev.main import (
     Choice,
     ChoiceAnswer,
     HashTokenizer,
+    Jev,
     JevConfig,
     Noul,
     NoulAnswer,
@@ -99,6 +101,15 @@ def test_key_order_preserves_token_and_path_identity(state) -> None:
     assert sorted((i, d, h) for i, (d, _, h) in zip(ids_a, paths_a)) == sorted(
         (i, d, h) for i, (d, _, h) in zip(ids_b, paths_b)
     )
+
+
+def test_model_runs_with_alternative_tokenizer(cfg, state, questions) -> None:
+    from open_jev.bpe_tokenizer import BPETokenizer
+    tok = BPETokenizer.load("cache/tokenizer.json")
+    m = Jev(replace(cfg, vocab_size=tok.vocab_size), tokenizer=tok).eval()
+    with torch.no_grad():
+        out = m([state], questions)[0]
+    assert len(out) == len(questions)
 
 
 # --- typed answers ---------------------------------------------------------

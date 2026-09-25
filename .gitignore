@@ -230,3 +230,6 @@ eval/out/
 
 # Benchmark harness artifacts (the committed baseline is benchmarks/RESULTS.md)
 benchmarks/out/
+
+# Tokenizer training artifact (reproduce: python -m scripts.train_bpe ...)
+cache/
