@@ -237,3 +237,7 @@ cache/
 # Training artifacts (checkpoints, metrics, generated datasets)
 data/train/
 runs/
+
+# Release artifacts (publish: python scripts/release.py; manifest sha256sum)
+dist/
+*.pt

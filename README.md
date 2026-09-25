@@ -146,6 +146,20 @@ python -m pipeline.train --config pipeline/examples/tiny.json --steps 10 \
        --resume runs/tiny/checkpoint.pt
 ```
 
+## Checkpoints
+
+Trained runs are exported to the versioned v1 format (`state_dict`, config,
+step, metrics, `sha256`) and published as GitHub Release assets:
+
+```bash
+python -m scripts.export_checkpoint --run runs/tiny --out dist/jev-tiny.pt
+python scripts/release.py --tag v0.1.0 --asset dist/jev-tiny.pt --dry-run
+```
+
+`--dry-run` prints the release manifest as JSON without touching the network; the
+real command runs `gh release create` when a trained artifact exists. See
+`MODEL_CARD.md` for what the artifact contains and its current limitations.
+
 ## Development
 
 ```bash
@@ -187,7 +201,7 @@ distribution shift before deploying a model in an unattended workflow.
 - [x] Add a real pretraining and distillation pipeline
 - [x] Benchmark state-cache reuse and multi-question scaling
 - [x] Evaluate calibration, consistency, and distribution shift
-- [ ] Publish trained checkpoints
+- [x] Publish trained checkpoints
 
 ## Acknowledgements
 
