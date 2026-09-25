@@ -157,8 +157,13 @@ python scripts/release.py --tag v0.1.0 --asset dist/jev-tiny.pt --dry-run
 ```
 
 `--dry-run` prints the release manifest as JSON without touching the network; the
-real command runs `gh release create` when a trained artifact exists. See
-`MODEL_CARD.md` for what the artifact contains and its current limitations.
+real command runs `gh release create` when a trained artifact exists.
+
+Published release: [v0.1.0](https://github.com/syntaxerror64/open-jev/releases/tag/v0.1.0)
+— `jev-tiny.pt` (2.3 MB) plus its `jev-tiny.json` sha256 manifest. Verify a
+download with `sha256sum jev-tiny.pt` against the manifest, or load it via
+`JEV_CHECKPOINT_URL=<asset-url> pytest tests/test_checkpoint_release.py -v`.
+See `MODEL_CARD.md` for what the artifact contains and its current limitations.
 
 ## Development
 
