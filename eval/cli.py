@@ -10,14 +10,19 @@ per group, plus a second forward over ``shuffle_keys`` restatements of the
 same states for the consistency metric -> aggregate ece/brier/nll/consistency
 over questions -> build_report() -> write both renderings into --out.
 
-Weights are random until stage 4, so the report carries ``model: "random"``
-and the standing warning (risk R1); ``n_bins`` is pinned to 10 so numbers
-stay comparable across runs (risk R4).
+Without ``--checkpoint`` weights are random, so the report carries
+``model: "random"`` and the standing warning (risk R1). With ``--checkpoint``
+the weights come from a trained stage-4 pipeline checkpoint instead: the
+report then carries ``model: "checkpoint:<path>"`` and the checkpoint's
+``step`` as metadata (the warning itself stays -- report.py is untouched,
+stage 9). ``n_bins`` is pinned to 10 so numbers stay comparable across
+runs (risk R4).
 """
 
 from __future__ import annotations
 
 import argparse
+import dataclasses
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -28,6 +33,7 @@ from eval.metrics import brier, ece, nll
 from eval.report import build_report, consistency
 from eval.shift import shuffle_keys
 from open_jev.main import Choice, Jev, JevConfig, Noul, Score
+from pipeline.checkpoint import read_checkpoint
 
 __all__ = ["evaluate", "main"]
 
@@ -62,9 +68,66 @@ def _group_rows(rows: Sequence[dict]) -> list[tuple[list[dict], list[int]]]:
     return list(groups.values())
 
 
-def evaluate(rows: Sequence[dict], *, seed: int = 0,
+def _load_checkpoint_model(path: Path | str) -> tuple[Jev, int]:
+    """Rebuild a trained Jev from a stage-4 pipeline checkpoint.
+
+    Returns ``(model, step)``: the model in eval mode (default
+    ``HashTokenizer(cfg.vocab_size)`` -- the same tokenizer ``pipeline.train``
+    fits with, open_jev/main.py:647) plus the training step the checkpoint
+    records, so a checkpoint report can carry it as metadata.
+
+    Failure modes are plain-language errors, never tracebacks:
+
+    * file missing -> ``SystemExit`` naming the path (style
+      ``scripts/export_checkpoint._read``);
+    * missing required keys -> ``read_checkpoint``'s own ``ValueError``
+      listing them with the path -- re-raised as-is, not re-wrapped;
+    * weights that do not match the config -> ``SystemExit`` naming the path.
+
+    The stored ``config`` is a whole ``TrainConfig`` dict (``asdict``), so
+    loop fields (``lr``, ``steps``, ``teacher``, ...) are filtered down to
+    ``JevConfig`` fields first -- the same 3-line ``dataclasses.fields`` idiom
+    as scripts/export_checkpoint.py:124-126, reimplemented here rather than
+    imported (that script is release-specific: ``_normalize`` handles the v1
+    ``state_dict`` layout, SystemExit about artifacts, sha256).
+    """
+    path = Path(path)
+    if not path.is_file():
+        raise SystemExit(
+            f"error: checkpoint not found: {path}\n"
+            "       train one first (e.g. `python -m pipeline.train`)."
+        )
+    ckpt = read_checkpoint(path)
+    config = ckpt.get("config")
+    if not isinstance(config, dict):
+        raise SystemExit(
+            f"error: {path}: 'config' must be a dict of JevConfig fields, "
+            f"got {type(config).__name__}"
+        )
+    known = {f.name for f in dataclasses.fields(JevConfig)}
+    kwargs = {k: v for k, v in config.items() if k in known}
+    model = Jev(JevConfig(**kwargs))
+    try:
+        model.load_state_dict(ckpt["model"])
+    except RuntimeError as exc:  # shape mismatch: config != stored weights
+        raise SystemExit(
+            f"error: {path}: checkpoint weights do not match config: {exc}"
+        ) from exc
+    model.eval()
+    return model, int(ckpt["step"])
+
+
+def evaluate(rows: Sequence[dict], *, model: Jev | None = None, seed: int = 0,
              n_bins: int = 10) -> tuple[dict, dict]:
-    """Score rows with a freshly seeded model; returns (metrics, meta).
+    """Score rows with a model; returns (metrics, meta).
+
+    ``model=None`` builds a freshly seeded random model (stage-2 behavior);
+    otherwise the passed model is evaluated as-is -- a checkpoint run loads
+    its weights via :func:`_load_checkpoint_model`. ``torch.manual_seed(seed)``
+    runs unconditionally: the RNG it seeds feeds weight init AND any
+    stochastic op, so ``shuffle_keys`` augmentations are identical across
+    runs and consistency stays comparable between random and checkpoint
+    reports.
 
     Metrics are means over questions of the per-question values, so a report
     row is always a scalar regardless of dataset shape.
@@ -72,10 +135,11 @@ def evaluate(rows: Sequence[dict], *, seed: int = 0,
     if not rows:
         raise ValueError("dataset is empty - nothing to evaluate")
     torch.manual_seed(seed)
-    model = Jev(JevConfig(vocab_size=1024, d_model=32, n_heads=4, d_ff=64,
-                          n_state_layers=1, n_question_layers=1,
-                          n_readout_layers=1, n_slots=4,
-                          max_state_len=64)).eval()
+    if model is None:
+        model = Jev(JevConfig(vocab_size=1024, d_model=32, n_heads=4, d_ff=64,
+                              n_state_layers=1, n_question_layers=1,
+                              n_readout_layers=1, n_slots=4,
+                              max_state_len=64)).eval()
 
     totals: dict[str, list[float]] = {"ece": [], "brier": [], "nll": [],
                                       "consistency": []}
@@ -127,11 +191,25 @@ def main(argv: Sequence[str] | None = None) -> int:
                    help="model init + augmentation seed (default: 0)")
     p.add_argument("--n-bins", type=int, default=10,
                    help="ECE bins, pinned in report metadata (risk R4)")
+    p.add_argument("--checkpoint", type=Path, default=None,
+                   help="stage-4 pipeline checkpoint to evaluate instead of "
+                        "a fresh random model (report gets model="
+                        "\"checkpoint:<path>\" + step)")
     args = p.parse_args(argv)
 
     rows = load_jsonl(args.dataset)
-    metrics, meta = evaluate(rows, seed=args.seed, n_bins=args.n_bins)
-    report = build_report(metrics, model="random",
+    step: int | None = None
+    if args.checkpoint is not None:
+        model, step = _load_checkpoint_model(args.checkpoint)
+        metrics, meta = evaluate(rows, model=model, seed=args.seed,
+                                 n_bins=args.n_bins)
+        model_id = f"checkpoint:{args.checkpoint}"
+    else:
+        metrics, meta = evaluate(rows, seed=args.seed, n_bins=args.n_bins)
+        model_id = "random"
+    if step is not None:
+        meta["step"] = step  # checkpoint runs carry their training step
+    report = build_report(metrics, model=model_id,
                           dataset=str(args.dataset), n_bins=args.n_bins,
                           **meta)
 
