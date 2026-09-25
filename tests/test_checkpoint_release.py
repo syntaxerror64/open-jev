@@ -1,4 +1,4 @@
-import hashlib, os, re, subprocess, sys, urllib.request
+import hashlib, json, os, re, subprocess, sys, urllib.request
 import pytest, torch
 from pathlib import Path
 
@@ -48,3 +48,12 @@ def test_checkpoint_artifact_metadata_is_self_describing(tmp_path) -> None:
     assert ck["sha256"] == digest
     assert ck["torch_version"] == str(torch.__version__)
     assert "seed" in ck and isinstance(ck["seed"], int)
+
+
+def test_model_card_matches_release_v020() -> None:
+    manifest = REPO / "dist" / "jev-real.json"
+    if not manifest.is_file(): pytest.skip("нет dist/ — экспорт не выполнялся")
+    sha = json.loads(manifest.read_text(encoding="utf-8"))["sha256"]
+    card = (REPO / "MODEL_CARD.md").read_text(encoding="utf-8")
+    assert re.fullmatch(r"[0-9a-f]{64}", sha) and "Apache 2.0" in card
+    assert sha in card, "MODEL_CARD.md не содержит sha256 dist-манифеста"
