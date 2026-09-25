@@ -223,3 +223,7 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Eval harness artifacts: synthetic dataset and generated reports
+data/eval/
+eval/out/
