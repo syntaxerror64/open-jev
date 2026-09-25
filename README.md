@@ -5,9 +5,10 @@ An open-source, from-first-principles reconstruction of the ideas behind
 written in PyTorch.
 
 > [!IMPORTANT]
-> This is an unofficial research implementation with random weights. It is not
-> the production Jev model, does not reproduce TypeSafe AI's training data or
-> weights, and makes no claim of matching their published results.
+> This is an unofficial research implementation whose released checkpoint is
+> trained by distillation (research-grade, not externally benchmarked). It is
+> not the production Jev model, does not reproduce TypeSafe AI's training data
+> or weights, and makes no claim of matching their published results.
 
 ## The Idea
 
@@ -103,9 +104,11 @@ for answer in answers:
     print(answer)
 ```
 
-The model is untrained, so the values from this example are random. The useful
-guarantee is structural: a `Choice` answer can only be one of the options that
-were declared.
+This snippet — like the `example.py` demo below — builds a fresh, randomly
+initialized model and never loads a checkpoint, so the values from this
+example are not meaningful; the released checkpoint (see Checkpoints) is
+trained by distillation. The useful guarantee is structural: a `Choice`
+answer can only be one of the options that were declared.
 
 To run the complete demo, including one calibration-oriented training step
 (`forward.py` is the minimal example — inference without a training step):
@@ -159,6 +162,14 @@ python scripts/release.py --tag v0.1.0 --asset dist/jev-tiny.pt --dry-run
 `--dry-run` prints the release manifest as JSON without touching the network; the
 real command runs `gh release create` when a trained artifact exists.
 
+Published release: [v0.2.0](https://github.com/syntaxerror64/open-jev/releases/tag/v0.2.0)
+— [`jev-real.pt`](https://github.com/syntaxerror64/open-jev/releases/download/v0.2.0/jev-real.pt)
+plus its [`jev-real.json`](https://github.com/syntaxerror64/open-jev/releases/download/v0.2.0/jev-real.json)
+sha256 manifest: the export of the `runs/real` run, trained by distillation
+(Qwen2.5-0.5B teacher, alpaca 500 rows). Verify a download with
+`sha256sum jev-real.pt` against the manifest, or load it via
+`JEV_CHECKPOINT_URL=<asset-url> pytest tests/test_checkpoint_release.py -v`.
+
 Published release: [v0.1.0](https://github.com/syntaxerror64/open-jev/releases/tag/v0.1.0)
 — `jev-tiny.pt` (2.3 MB) plus its `jev-tiny.json` sha256 manifest. Verify a
 download with `sha256sum jev-tiny.pt` against the manifest, or load it via
@@ -175,9 +186,10 @@ python -m venv .venv
 ```
 
 The suite lives in `tests/` and checks structural guarantees only (typed
-answers, normalized distributions, question isolation, cache reuse) because the
-weights are random. Tests marked `slow` (the `example.py` demo) are skipped by
-the push gate below; run them with a plain `pytest`.
+answers, normalized distributions, question isolation, cache reuse) —
+properties that hold for any weights, trained or random. Tests marked `slow`
+(the `example.py` demo) are skipped by the push gate below; run them with a
+plain `pytest`.
 
 Pushes are gated on that suite: enable the bundled hook once per clone and
 `git push` refuses to upload anything unless the tests pass.
