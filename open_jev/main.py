@@ -122,6 +122,16 @@ class JevConfig:
     # Above this, real deployments run score-then-choose in two stages.
     max_options: int = 255
 
+    # Stage 14: where Choice/Score answer confidence comes from. Trailing
+    # default field, so configs serialized before this existed (`JevConfig(**old)`)
+    # keep loading untouched.
+    #   "evidential" (default) -- the epistemic `ConfidenceHead` value, the
+    #       training-time semantics, MODEL_CARD, everything as before.
+    #   "spread" -- the docs.typesafe.ai demo formula, a pure function of the
+    #       answer's own probabilities (`spread_confidence`). Answers only:
+    #       `Jev.logits` stays evidential in both kinds.
+    confidence_kind: str = "evidential"
+
     def __post_init__(self) -> None:
         if self.d_model % self.n_heads != 0:
             raise ValueError("d_model must be divisible by n_heads")
@@ -539,8 +549,41 @@ class TextEncoder(nn.Module):
         return (x * keep).sum(1) / keep.sum(1).clamp(min=1.0)
 
 
+def spread_confidence(probs: Sequence[float]) -> float:
+    """Confidence from how peaked a probability distribution is (spread kind).
+
+    The docs.typesafe.ai demo formula -- flat distribution means "no idea",
+    peaked distribution means "sure", independent of any learned head:
+
+        clamp((K * peak - 1) / (K - 1), 0.0, 1.0)   where peak = max(probs)
+
+    so uniform -> 0.0, one-hot -> 1.0. K < 2 raises ``ValueError`` instead of
+    dividing by K - 1 == 0. Used only when `JevConfig.confidence_kind == "spread"`,
+    and only when `Jev.forward` assembles Choice/Score answers -- never in
+    `Jev.logits`, whose confidence must stay the evidential head's (RLCDLoss's
+    stop-gradient assumes it is independent of the probabilities).
+
+    Args:
+        probs: The answer's probability values, K >= 2 of them.
+
+    Returns:
+        A float in [0.0, 1.0].
+    """
+    values = list(probs)
+    k = len(values)
+    if k < 2:
+        raise ValueError(f"spread_confidence needs >= 2 probabilities, got {k}")
+    return min(max((k * max(values) - 1.0) / (k - 1), 0.0), 1.0)
+
+
 class ConfidenceHead(nn.Module):
     """Epistemic confidence via evidential (Dirichlet) output.
+
+    This is the "evidential" confidence kind (the default). The other kind,
+    "spread" (`spread_confidence`), bypasses this head when assembling
+    Choice/Score answers, but both kinds coexist: `Jev.logits` -- the training
+    path `RLCDLoss` reads -- ALWAYS returns this head's value, whatever
+    `JevConfig.confidence_kind` says. See `Jev.logits` for why.
 
     We predict a scalar "evidence" budget. Concentration alpha = 1 + evidence*p
     gives a Dirichlet whose total mass S encodes how much the model actually
@@ -700,6 +743,15 @@ class Jev(nn.Module):
         as model metadata. padding_idx=0 (PAD) is preserved on both tables.
         """
         super().__init__()
+        # Fail fast on a bad `confidence_kind`, naming the offender and the
+        # allowed set. Deliberately in `Jev.__init__` (not `JevConfig`): a bad
+        # value is a clean `ValueError` at model construction, while the config
+        # itself stays a dumb record old checkpoints can rebuild.
+        if cfg.confidence_kind not in ("evidential", "spread"):
+            raise ValueError(
+                f"confidence_kind must be one of ('evidential', 'spread'), "
+                f"got {cfg.confidence_kind!r}"
+            )
         self.cfg = cfg
         self.tokenizer = tokenizer or HashTokenizer(cfg.vocab_size)
 
@@ -802,6 +854,12 @@ class Jev(nn.Module):
 
         Returns answers[batch_index][question_index]. One forward pass total,
         regardless of how many questions you ask.
+
+        Confidence has two kinds (`JevConfig.confidence_kind`): the default
+        "evidential" takes it from `ConfidenceHead` exactly as before; "spread"
+        takes it for Choice/Score answers from `spread_confidence` of that
+        answer's own probabilities. Noul answers carry no confidence either way,
+        and `logits` stays evidential in both kinds.
         """
         cache = self.encode_state(states)
         pooled = self._readout(cache, questions)  # [B*N, d]
@@ -825,16 +883,23 @@ class Jev(nn.Module):
                 )
                 probs = F.softmax(self.choice_head(vec, opts, mask), dim=-1)
                 conf, _ = self.confidence_head(vec, len(q.options))
+                spread = self.cfg.confidence_kind == "spread"
                 for b in range(B):
                     row = probs[b]
+                    probabilities = {
+                        o: row[i].item() for i, o in enumerate(q.options)
+                    }
                     results[b].append(
                         ChoiceAnswer(
                             key=key,
                             choice=q.options[int(row.argmax())],
-                            probabilities={
-                                o: row[i].item() for i, o in enumerate(q.options)
-                            },
-                            confidence=conf[b].item(),
+                            probabilities=probabilities,
+                            # Answers assembly: the ONLY place "spread" applies.
+                            confidence=(
+                                spread_confidence(probabilities.values())
+                                if spread
+                                else conf[b].item()
+                            ),
                         )
                     )
 
@@ -845,19 +910,26 @@ class Jev(nn.Module):
                 )
                 expected = (probs * levels).sum(-1)
                 conf, _ = self.confidence_head(vec, len(q.labels))
+                spread = self.cfg.confidence_kind == "spread"
                 for b in range(B):
                     row = probs[b]
+                    probabilities = {
+                        lbl: row[i].item() for i, lbl in enumerate(q.labels)
+                    }
                     results[b].append(
                         ScoreAnswer(
                             key=key,
                             score=expected[b].item(),
-                            probabilities={
-                                lbl: row[i].item() for i, lbl in enumerate(q.labels)
-                            },
+                            probabilities=probabilities,
                             legend={
                                 i: lbl for i, lbl in enumerate(q.labels)
                             },
-                            confidence=conf[b].item(),
+                            # Same branch as Choice: answers only, never `logits`.
+                            confidence=(
+                                spread_confidence(probabilities.values())
+                                if spread
+                                else conf[b].item()
+                            ),
                         )
                     )
 
@@ -870,6 +942,13 @@ class Jev(nn.Module):
 
         Noul returns K=2 as [P(false), P(true)] so all three primitives share one
         loss function.
+
+        ALWAYS evidential, whatever `JevConfig.confidence_kind` says. This is a
+        training invariant, not an oversight: `RLCDLoss.evidential` assumes the
+        confidence it receives is independent of these probabilities (its
+        stop-gradient says so), and `spread_confidence` -- a pure function of
+        probs -- would break exactly that. The "spread" kind exists only for
+        answer assembly in `forward`.
         """
         cache = self.encode_state(states)
         pooled = self._readout(cache, questions)
