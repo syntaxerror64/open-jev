@@ -6,7 +6,7 @@
 [![PyTorch](https://img.shields.io/badge/pytorch-2%2B-ee4c2c)](https://pytorch.org/)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/syntaxerror64/open-jev/pulls)
 
-**English** | [Русский](README.ru.md) | [简体中文](README.zh-CN.md)
+![English](https://img.shields.io/badge/-English-555555.svg) [![Русский](https://img.shields.io/badge/-%D0%A0%D1%83%D1%81%D1%81%D0%BA%D0%B8%D0%B9-555555.svg)](README.ru.md) [![简体中文](https://img.shields.io/badge/-%E7%AE%80%E4%BD%93%E4%B8%AD%E6%96%87-555555.svg)](README.zh-CN.md)
 
 An open-source, from-first-principles PyTorch reconstruction of the ideas
 behind [TypeSafe AI's Jev / System One
