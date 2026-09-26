@@ -17,6 +17,10 @@ behind [TypeSafe AI's Jev / System One
 models](https://typesafe.ai/blog/introducing-system-one-models-and-jev):
 unstructured program state goes in, typed probabilistic decisions come out.
 
+The repository contains the model, a resumable distillation training
+pipeline, evaluation and benchmark tooling, and a trained 1.57M-parameter
+checkpoint published as a GitHub Release.
+
 > [!IMPORTANT]
 > This is an unofficial research implementation. The released checkpoint is
 > trained by distillation — research-grade, not externally benchmarked. It is
@@ -27,6 +31,7 @@ unstructured program state goes in, typed probabilistic decisions come out.
 
 - [The idea](#the-idea)
 - [Highlights](#highlights)
+- [Repository layout](#repository-layout)
 - [Installation](#installation)
 - [Quick start](#quick-start)
 - [Training](#training)
@@ -41,11 +46,10 @@ unstructured program state goes in, typed probabilistic decisions come out.
 
 ## The idea
 
-Jev is presented as a *system one* model: unstructured program state goes in,
-typed probabilistic decisions come out.
-
-Instead of generating text one token at a time, this implementation encodes the
-state once and answers every question through small typed readout heads.
+Jev is a *system one* model: unstructured program state goes in, typed
+probabilistic decisions come out. Instead of generating text token by token,
+this implementation encodes the state once and answers every question through
+small typed readout heads.
 
 ```text
 JSON-like state ──> bidirectional state encoder ──> shared state cache
@@ -59,9 +63,8 @@ JSON-like state ──> bidirectional state encoder ──> shared state cache
 ```
 
 Questions are isolated from one another and folded into the batch dimension.
-They may attend to the shared state, but not to other questions. The result is
-a single parallel forward pass with outputs constrained by their declared
-types.
+They attend to the shared state, but never to each other. The result is a
+single parallel forward pass with outputs constrained by their declared types.
 
 ## Highlights
 
@@ -69,13 +72,13 @@ types.
   options declared at runtime, `Score` returns a distribution over rubric
   levels plus its expectation — a `Choice` answer can never be something you
   did not offer.
-- **One encode, many questions.** A bidirectional transformer encodes the
-  nested state once into a shared, cacheable representation; every question
-  cross-attends into that cache through learned query slots. Cache reuse and
-  multi-question scaling are benchmarked in [benchmarks/RESULTS.md](benchmarks/RESULTS.md).
+- **One encode, many questions.** The state is encoded once into a shared,
+  cacheable representation; every question cross-attends into that cache.
+  Cache reuse and multi-question scaling are measured in
+  [benchmarks/RESULTS.md](benchmarks/RESULTS.md).
 - **Confidence you can reason about.** An evidential head models epistemic
-  confidence separately from class probability, with a spread-based alternative
-  selectable per configuration.
+  confidence separately from class probability, with a spread-based
+  alternative selectable per configuration.
 - **Soft-target training.** `RLCDLoss` combines soft-target NLL, Brier score,
   consistency, evidential, and ECE terms against full distributions — never
   one-hot labels — so disagreement and ambiguity stay visible.
@@ -92,6 +95,20 @@ is a deterministic hash tokenizer; a trained BPE tokenizer (built with
 `python -m scripts.train_bpe` from the repository's own text) implements the
 same interface and can be passed to `Jev` as an opt-in.
 
+## Repository layout
+
+| Path | What lives there |
+|---|---|
+| `open_jev/` | Model core: config, typed heads, tokenizers, checkpoint I/O |
+| `pipeline/` | Training loop, teacher distillation, data loading, configs |
+| `scripts/` | Standalone tools: fetch data, train BPE, export, release |
+| `eval/` | Holdout evaluation, shift analysis, comparison reports |
+| `benchmarks/` | CPU timings for cache reuse and multi-question scaling |
+| `tests/` | The 150-test suite that gates every push |
+| `example.py` | Full demo: inference plus one calibration-oriented train step |
+| `forward.py` | Minimal example: inference only, no training step |
+| `MODEL_CARD.md` | What the published artifact contains and its limitations |
+
 ## Installation
 
 ```bash
@@ -100,7 +117,8 @@ cd open-jev
 python -m pip install "torch>=2.0"
 ```
 
-Python 3.10 or newer is recommended.
+Python 3.10 or newer is recommended. PyTorch is the only runtime dependency;
+`requirements-dev.txt` adds what the test suite and the BPE trainer need.
 
 ## Quick start
 
@@ -148,10 +166,9 @@ for answer in answers:
 ```
 
 This snippet builds a fresh, randomly initialized model and never loads a
-checkpoint, so the values above are not meaningful; the released checkpoint
-(see [Released checkpoints](#released-checkpoints)) is trained by
-distillation. The useful guarantee is structural: a `Choice` answer can only
-be one of the options that were declared.
+checkpoint, so the values above are not meaningful. The useful guarantee is
+structural: a `Choice` answer can only be one of the options that were
+declared.
 
 To run the complete demo, including one calibration-oriented training step:
 
@@ -159,7 +176,7 @@ To run the complete demo, including one calibration-oriented training step:
 python example.py
 ```
 
-`forward.py` is the minimal example — inference without a training step.
+`forward.py` is the same example without the training step.
 
 ## Training
 
@@ -217,8 +234,8 @@ python -m scripts.export_checkpoint --run runs/tiny --out dist/jev-tiny.pt
 python scripts/release.py --tag v0.1.0 --asset dist/jev-tiny.pt --dry-run
 ```
 
-`--dry-run` prints the release manifest as JSON without touching the network; the
-real command runs `gh release create` when a trained artifact exists.
+`--dry-run` prints the release manifest as JSON without touching the network;
+the real command runs `gh release create` when a trained artifact exists.
 [MODEL_CARD.md](MODEL_CARD.md) describes what the artifact contains and its
 current limitations.
 
@@ -271,10 +288,11 @@ For an emergency push use `git push --no-verify`.
   metrics provenance, and limitations
 - [eval/COMPARISON.md](eval/COMPARISON.md) — random vs. checkpoint comparison
   on the holdout
-- [benchmarks/RESULTS.md](benchmarks/RESULTS.md) — state-cache reuse and
-  multi-question scaling measurements
+- [benchmarks/README.md](benchmarks/README.md) and
+  [benchmarks/RESULTS.md](benchmarks/RESULTS.md) — how the benchmarks run and
+  what they measured
 - `docs/ARCHITECTURE.md` — the full reasoning and trade-offs behind the
-  reconstruction (local development document)
+  reconstruction (local development document; not part of the repository)
 
 ## Limitations
 

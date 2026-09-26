@@ -33,9 +33,10 @@ options declared at runtime, and `Score` applies ordinal thresholds to return
 a distribution over rubric levels plus its expectation. An evidential head
 models epistemic confidence separately from class probability, and `RLCDLoss`
 combines soft-target NLL, Brier score, consistency, evidential, and ECE terms.
-The full diagram and the list of architectural claims are in the
-[Architecture section of the README](README.md#architecture) and the reasoning
-behind each choice is in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+The full diagram is in [The idea section of the README](README.md#the-idea),
+the list of architectural claims is in
+[Highlights](README.md#highlights), and the reasoning behind each choice is in
+`docs/ARCHITECTURE.md` (local development document).
 
 ## Configuration
 

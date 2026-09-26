@@ -17,6 +17,9 @@
 模型](https://typesafe.ai/blog/introducing-system-one-models-and-jev)的思想：
 输入是非结构化的程序状态，输出是带类型的概率决策。
 
+仓库包含模型本身、可恢复的蒸馏训练管线、评估与基准测试工具，以及一个通过
+GitHub Release 发布的 157 万参数训练检查点。
+
 > [!IMPORTANT]
 > 这是一个非官方的研究性实现。发布的检查点通过蒸馏训练——属于研究级别，
 > 没有外部基准测试。它不是生产环境的 Jev 模型，不复现 TypeSafe AI 的训练数据
@@ -26,6 +29,7 @@
 
 - [核心思想](#核心思想)
 - [主要特性](#主要特性)
+- [仓库结构](#仓库结构)
 - [安装](#安装)
 - [快速开始](#快速开始)
 - [训练](#训练)
@@ -40,9 +44,7 @@
 
 ## 核心思想
 
-Jev 被定位为一个 *system one* 模型：输入非结构化的程序状态，输出带类型的概率
-决策。
-
+Jev 是一个 *system one* 模型：输入非结构化的程序状态，输出带类型的概率决策。
 本实现不逐个 token 地生成文本，而是对状态只编码一次，再通过小型的类型化
 readout 头回答每一个问题。
 
@@ -57,7 +59,7 @@ readout 头回答每一个问题。
           p(true)      p(options)     p(levels)
 ```
 
-问题之间彼此隔离，并被折叠进批处理维度。它们可以关注共享状态，但不能关注
+问题之间彼此隔离，并被折叠进批处理维度。它们可以关注共享状态，但绝不关注
 其他问题。结果是一次并行的 forward 计算，输出被各自声明的类型所约束。
 
 ## 主要特性
@@ -65,9 +67,9 @@ readout 头回答每一个问题。
 - **类型化输出。** `Noul` 返回 p(true)，`Choice` 只在运行时声明的选项上做
   softmax，`Score` 返回评分等级分布及其期望——`Choice` 的答案绝不会是你没有
   提供过的选项。
-- **一次编码，多个问题。** 双向变换器将嵌套状态一次性编码为可缓存的共享
-  表示；每个问题通过可学习的 query 槽位交叉注意力访问该缓存。缓存复用与
-  多问题扩展性已在 [benchmarks/RESULTS.md](benchmarks/RESULTS.md) 中测量。
+- **一次编码，多个问题。** 状态只编码一次，得到可缓存的共享表示；每个问题
+  通过交叉注意力访问该缓存。缓存复用与多问题扩展性已在
+  [benchmarks/RESULTS.md](benchmarks/RESULTS.md) 中测量。
 - **可以推理的置信度。** 证据（evidential）头将认知不确定性与类别概率分开
   建模；另一种基于离散度（spread）的方式可通过配置选择。
 - **软标签训练。** `RLCDLoss` 在完整分布上组合 soft-target NLL、Brier 分数、
@@ -83,6 +85,20 @@ readout 头回答每一个问题。
 （用 `python -m scripts.train_bpe` 仅从本仓库文本构建）实现相同接口，可按需
 传给 `Jev`。
 
+## 仓库结构
+
+| 路径 | 内容 |
+|---|---|
+| `open_jev/` | 模型核心：配置、类型化输出头、分词器、检查点 I/O |
+| `pipeline/` | 训练循环、教师蒸馏、数据加载、配置 |
+| `scripts/` | 独立工具：下载数据、训练 BPE、导出、发布 |
+| `eval/` | 保留集评估、分布漂移分析、对比报告 |
+| `benchmarks/` | CPU 计时：缓存复用与多问题扩展性 |
+| `tests/` | 拦截每次推送的 150 个测试 |
+| `example.py` | 完整演示：推理加上一次面向校准的训练步骤 |
+| `forward.py` | 最小示例：只有推理，没有训练步骤 |
+| `MODEL_CARD.md` | 发布产物包含什么及其局限 |
+
 ## 安装
 
 ```bash
@@ -91,7 +107,8 @@ cd open-jev
 python -m pip install "torch>=2.0"
 ```
 
-建议使用 Python 3.10 或更高版本。
+建议使用 Python 3.10 或更高版本。PyTorch 是唯一的运行时依赖；
+`requirements-dev.txt` 提供测试与 BPE 训练器所需的额外依赖。
 
 ## 快速开始
 
@@ -139,8 +156,7 @@ for answer in answers:
 ```
 
 这段代码构建的是全新随机初始化的模型，从不加载检查点，因此上面的数值没有
-意义；发布的检查点（见[已发布的检查点](#已发布的检查点)）是通过蒸馏训练的。
-这里真正有用的保证是结构性的：`Choice` 的答案只能是你提供的选项之一。
+意义。这里真正有用的保证是结构性的：`Choice` 的答案只能是你提供的选项之一。
 
 运行完整演示（包含一次面向校准的训练步骤）：
 
@@ -148,7 +164,7 @@ for answer in answers:
 python example.py
 ```
 
-`forward.py` 是最小示例——只有推理，没有训练步骤。
+`forward.py` 是同一个示例，但没有训练步骤。
 
 ## 训练
 
@@ -196,7 +212,7 @@ python -m pipeline.train --config pipeline/examples/tiny.json --steps 10 \
 ```bash
 sha256sum jev-real.pt                       # 必须与 jev-real.json 中的 "sha256" 一致
 JEV_CHECKPOINT_URL=<asset-url> pytest tests/test_checkpoint_release.py -v
-``
+```
 
 自行导出并发布一次运行：
 
@@ -252,9 +268,10 @@ git config core.hooksPath .githooks
 
 - [MODEL_CARD.md](MODEL_CARD.md) —— 发布产物包含什么、指标来源与局限
 - [eval/COMPARISON.md](eval/COMPARISON.md) —— 保留集上随机与检查点的对比
-- [benchmarks/RESULTS.md](benchmarks/RESULTS.md) —— 状态缓存复用与多问题
-  扩展性的测量
-- `docs/ARCHITECTURE.md` —— 复现方案的完整推理与权衡（本地开发文档）
+- [benchmarks/README.md](benchmarks/README.md) 与
+  [benchmarks/RESULTS.md](benchmarks/RESULTS.md) —— 基准如何运行及其测量结果
+- `docs/ARCHITECTURE.md` —— 复现方案的完整推理与权衡（本地开发文档，不属于
+  本仓库）
 
 ## 局限性
 
