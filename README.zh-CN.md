@@ -6,7 +6,11 @@
 [![PyTorch](https://img.shields.io/badge/pytorch-2%2B-ee4c2c)](https://pytorch.org/)
 [![欢迎 PR](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/syntaxerror64/open-jev/pulls)
 
-[![English](https://img.shields.io/badge/-English-555555.svg)](README.md) [![Русский](https://img.shields.io/badge/-%D0%A0%D1%83%D1%81%D1%81%D0%BA%D0%B8%D0%B9-555555.svg)](README.ru.md) ![简体中文](https://img.shields.io/badge/-%E7%AE%80%E4%BD%93%E4%B8%AD%E6%96%87-555555.svg)
+<div align="center">
+
+[<img src="https://img.shields.io/badge/-%F0%9F%87%AC%F0%9F%87%A7%20English-555555.svg" width="225" alt="🇬🇧 English">](README.md)&nbsp;&nbsp;[<img src="https://img.shields.io/badge/-%F0%9F%87%B7%F0%9F%87%BA%20%D0%A0%D1%83%D1%81%D1%81%D0%BA%D0%B8%D0%B9-555555.svg" width="243" alt="🇷🇺 Русский">](README.ru.md)&nbsp;&nbsp;<img src="https://img.shields.io/badge/-%F0%9F%87%A8%F0%9F%87%B3%20%E7%AE%80%E4%BD%93%E4%B8%AD%E6%96%87-555555.svg" width="237" alt="🇨🇳 简体中文">
+
+</div>
 
 一个从零开始、基于第一性原理的 PyTorch 开源复现，复现
 [TypeSafe AI 的 Jev / System One
