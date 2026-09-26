@@ -282,5 +282,3 @@ pre-push 钩子（`git config core.hooksPath .githooks`，每个克隆一次）�
 - 感谢 [TypeSafe AI](https://typesafe.ai) 发布 [System One Models and
   Jev](https://typesafe.ai/blog/introducing-system-one-models-and-jev)，以及
   足够多的公开细节启发独立实验。
-- 感谢 [Kye Gomez](https://github.com/kyegomez/open-jev) 的 open-jev 初始
-  脚手架，本仓库在其之上构建。

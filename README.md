@@ -305,5 +305,3 @@ notices and marking the files you changed. There is no warranty.
 - Appreciation to [TypeSafe AI](https://typesafe.ai) for introducing
   [System One Models and Jev](https://typesafe.ai/blog/introducing-system-one-models-and-jev)
   and for sharing enough public detail to inspire independent experimentation.
-- Thanks to [Kye Gomez](https://github.com/kyegomez/open-jev) for the original
-  open-jev scaffold this repository builds upon.

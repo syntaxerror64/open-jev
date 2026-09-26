@@ -313,5 +313,3 @@ Issues и pull request'ы приветствуются. Перед пушем з
 - [TypeSafe AI](https://typesafe.ai) за статью [System One Models and
   Jev](https://typesafe.ai/blog/introducing-system-one-models-and-jev) и
   достаточно публичных деталей для независимых экспериментов.
-- [Kye Gomez](https://github.com/kyegomez/open-jev) за исходный каркас
-  open-jev, на котором строится этот репозиторий.
